@@ -156,149 +156,65 @@
  *
  */
 
-#include <hpcc.h>
-#include <stdio.h>
 #include "RandomAccess.h"
 #include <shmem.h>
-#define MAXTHREADS 256
-#define CHUNK    1
-#define CHUNKBIG (32*CHUNK)
 
-void
-do_abort(char* f)
+uint64_t TotalMemOpt;
+int NumUpdatesOpt;
+double SHMEMGUPs;
+double SHMEMRandomAccess_ErrorsFraction;
+double SHMEMRandomAccess_time;
+double SHMEMRandomAccess_CheckTime;
+int Failure;
+
+static void print_usage(void)
 {
-  fprintf(stderr, "%s\n", f);
+	fprintf(stderr, "\nOptions:\n");
+	fprintf(stderr, " %-20s %s\n", "-h", "display this help message");
+	fprintf(stderr, " %-20s %s\n", "-m", "memory in bytes per PE");
+	fprintf(stderr, " %-20s %s\n", "-n", "number of updates per PE");
+
+	return;
 }
-
-u64Int srcBuf[] = {
-  0xb1ffd1da
-};
-u64Int targetBuf[sizeof(srcBuf) / sizeof(u64Int)];
-
-static s64Int count;
-s64Int updates[MAXTHREADS];
-static s64Int ran;
-
-void
-Power2NodesRandomAccessUpdate(u64Int logTableSize,
-                                 u64Int TableSize,
-                                 u64Int LocalTableSize,
-                                 u64Int MinLocalTableSize,
-                                 u64Int GlobalStartMyProc,
-                                 u64Int Top,
-                                 int logNumProcs,
-                                 int NumProcs,
-                                 int Remainder,
-                                 int MyProc,
-                                 s64Int ProcNumUpdates)
-{
-  int i,j,k;
-  int logTableLocal,ipartner,iterate,niterate;
-  int ndata,nkeep,nsend,nrecv,index,nlocalm1;
-  int numthrds;
-  u64Int datum,procmask;
-  u64Int *data,*send;
-  void * tstatus;
-  int remote_proc, offset;
-  u64Int *tb;
-  s64Int remotecount;
-  int thisPeId;
-  int numNodes;
-  int count2;
-
-  thisPeId = shmem_my_pe();
-  numNodes = shmem_n_pes();
-  shmem_barrier_all();
-
-
-  /* setup: should not really be part of this timed routine */
-  ran = starts(4*GlobalStartMyProc);
-
-  niterate = ProcNumUpdates;
-  logTableLocal = logTableSize - logNumProcs;
-  nlocalm1 = LocalTableSize - 1;
-
-  for (j = 0; j < MAXTHREADS; j++)
-    updates[j] = 0;
-
-  for (iterate = 0; iterate < niterate; iterate++) {
-      count = 0;
-      shmem_barrier_all();
-      ran = (ran << 1) ^ ((s64Int) ran < ZERO64B ? POLY : ZERO64B);
-      remote_proc = (ran >> logTableLocal) & (numNodes - 1);
-      remotecount = shmem_longlong_fadd(&count, 1, remote_proc);
-      shmem_longlong_p(&updates[remotecount], ran, remote_proc);
-
-      shmem_barrier_all();
-
-      for(i=0;i<count;i++) {
-          datum = updates[i];
-          index = datum & nlocalm1;
-          HPCC_Table[index] ^= datum;
-          updates[i] = 0;
-      }
-  }
-
-  shmem_barrier_all();
-
-}
-
-HPCC_Params params;
 
 int main(int argc, char **argv)
 {
-  int myRank, commSize;
-  time_t currentTime;
-  int provided;
+	int op;
 
-  shmem_init();
-  HPCC_SHMEMRandomAccess( &params );
-  shmem_finalize();
+	while ((op = getopt(argc, argv, "hm:n:")) != -1) {
+		switch (op) {
+		/*
+		 * memory per PE (used for determining table size)
+		 */
+		case 'm':
+			TotalMemOpt = atoll(optarg);
+			if (TotalMemOpt <= 0) {
+				print_usage();
+				return -1;
+			}
+			break;
 
-  return 0;
-}
+		/*
+		 * num updates/PE
+		 */
+		case 'n':
+			NumUpdatesOpt = atoi(optarg);
+			if (NumUpdatesOpt <= 0) {
+				print_usage();
+				return -1;
+			}
+			break;
 
-/* Utility routine to start random number generator at Nth step */
-s64Int
-starts(u64Int n)
-{
-  /* s64Int i, j; */
-  int i, j;
-  u64Int m2[64];
-  u64Int temp, ran;
+		case '?':
+		case 'h':
+			print_usage();
+			return -1;
+		}
+	}
 
-  while (n < 0)
-    n += PERIOD;
-  while (n > PERIOD)
-    n -= PERIOD;
-  if (n == 0)
-    return 0x1;
+	shmem_init();
+	SHMEMRandomAccess();
+	shmem_finalize();
 
-  temp = 0x1;
-  for (i=0; i<64; i++)
-    {
-      m2[i] = temp;
-      temp = (temp << 1) ^ ((s64Int) temp < 0 ? POLY : 0);
-      temp = (temp << 1) ^ ((s64Int) temp < 0 ? POLY : 0);
-    }
-
-  for (i=62; i>=0; i--)
-    if ((n >> i) & 1)
-      break;
-
-  ran = 0x2;
-
-  while (i > 0)
-    {
-      temp = 0;
-      for (j=0; j<64; j++)
-        if ((ran >> j) & 1)
-          temp ^= m2[j];
-      ran = temp;
-      i -= 1;
-      if ((n >> i) & 1)
-        ran = (ran << 1) ^ ((s64Int) ran < 0 ? POLY : 0);
-    }
-
-  return ran;
+	return 0;
 }
