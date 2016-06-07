@@ -166,6 +166,7 @@ double SHMEMRandomAccess_ErrorsFraction;
 double SHMEMRandomAccess_time;
 double SHMEMRandomAccess_CheckTime;
 int Failure;
+int RunVerification;
 
 static void print_usage(void)
 {
@@ -181,7 +182,7 @@ int main(int argc, char **argv)
 {
 	int op;
 
-	while ((op = getopt(argc, argv, "hm:n:")) != -1) {
+	while ((op = getopt(argc, argv, "hvm:n:")) != -1) {
 		switch (op) {
 		/*
 		 * memory per PE (used for determining table size)
@@ -205,6 +206,12 @@ int main(int argc, char **argv)
 			}
 			break;
 
+		/*
+ 		 * ask for verification
+ 		 */
+		case 'v':
+			RunVerification = 1;
+			break;
 		case '?':
 		case 'h':
 			print_usage();

@@ -260,16 +260,15 @@ SHMEMRandomAccess(void)
    * TODO: replace this
    */
 
-  TotalMem = TotalMemOpt ? TotalMemOpt : 200000; /* max single node memory */
-  TotalMem *= NumProcs;             /* max memory in NumProcs nodes */
+  TotalMem = TotalMemOpt ? (double)TotalMemOpt : 200000.0; /* max single node memory */
+  TotalMem *= (double)NumProcs;             /* max memory in NumProcs nodes */
 
-  TotalMem /= sizeof(uint64_t);
+  TotalMem /= (double)sizeof(uint64_t);
 
   /* calculate TableSize --- the size of update array (must be a power of 2) */
   for (TotalMem *= 0.5, logTableSize = 0, TableSize = 1;
        TotalMem >= 1.0;
-       TotalMem *= 0.5, logTableSize++, TableSize <<= 1)
-    ; /* EMPTY */
+       TotalMem *= 0.5, logTableSize++, TableSize <<= 1) { };
 
   /*
    * Calculate local table size, etc.
@@ -371,37 +370,42 @@ SHMEMRandomAccess(void)
 
   RealTime = -RTSEC();
 
-  UpdateTable(HPCC_Table,
-              TableSize,
-              MinLocalTableSize,
-              Top,
-              Remainder,
-              ProcNumUpdates,
-              1);
+  if (RunVerification) {
+      if (MyProc == 0)
+         fprintf( outFile, "Running verification\n");
 
-  NumErrors = 0;
-  for (i=0; i<LocalTableSize; i++) {
-    if (HPCC_Table[i] != i + GlobalStartMyProc)
-      NumErrors++;
-  }
+      UpdateTable(HPCC_Table,
+                  TableSize,
+                  MinLocalTableSize,
+                  Top,
+                  Remainder,
+                  ProcNumUpdates,
+                  1);
+      NumErrors = 0;
+      for (i=0; i<LocalTableSize; i++) {
+          if (HPCC_Table[i] != i + GlobalStartMyProc) NumErrors++;
+      }
 
-  shmem_barrier_all();
-  shmem_longlong_sum_to_all( (long long *)&GlbNumErrors,
+      shmem_barrier_all();
+      shmem_longlong_sum_to_all( (long long *)&GlbNumErrors,
 			     (const long long *)&NumErrors,
 			     1, 0,0, NumProcs,llpWrk, llpSync);
-  shmem_barrier_all();
+      shmem_barrier_all();
 
-  /* End timed section */
+      /* End timed section */
 
-  RealTime += RTSEC();
+      RealTime += RTSEC();
 
-  if(MyProc == 0){
-    fprintf( outFile, "Verification:  Real time used = %.6f seconds\n", RealTime);
-    fprintf( outFile, "Found %lu errors in %lu locations (%s).\n",
-             GlbNumErrors, TableSize, (GlbNumErrors <= 0.01*TableSize) ?
-             "passed" : "failed");
-    if (GlbNumErrors > 0.01*TableSize) Failure = 1;
+     if(MyProc == 0){
+        fprintf( outFile, "Verification:  Real time used = %.6f seconds\n", RealTime);
+        fprintf( outFile, "Found %lu errors in %lu locations (%s).\n",
+                 GlbNumErrors, TableSize, (GlbNumErrors <= 0.01*TableSize) ?
+                 "passed" : "failed");
+        if (GlbNumErrors > 0.01*TableSize) Failure = 1;
+     }
+
   }
+
   /* End verification phase */
 
   shmem_free( HPCC_Table );

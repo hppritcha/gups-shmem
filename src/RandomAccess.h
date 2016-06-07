@@ -33,6 +33,7 @@ extern double SHMEMRandomAccess_time;
 extern double SHMEMRandomAccess_CheckTime;
 extern uint64_t *HPCC_Table;
 extern int Failure;
+extern int RunVerification;
 
 
 #define HPCC_TRUE 1
