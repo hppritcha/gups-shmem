@@ -12,9 +12,6 @@
 #define POLY 0x0000000000000007UL
 #define PERIOD 1317624576693539401L
 
-/* Define 64-bit types and corresponding format strings for printf() and constants */
-#define FSTR64 "%lld"
-#define FSTRU64 "%llu"
 #define ZERO64B 0LL
 
 /* For timing */

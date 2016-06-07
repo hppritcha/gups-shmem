@@ -172,9 +172,6 @@ UpdateTable(uint64_t *Table,
   uint64_t ran, remote_val, global_offset;
   int remote_pe;
   int global_start_at_pe;
-  int numNodes;
-
-  numNodes = shmem_n_pes();
 
   shmem_barrier_all();
 
@@ -227,21 +224,25 @@ SHMEMRandomAccess(void)
                        * NumUpdates_Default due to execution time bounds */
   int64_t ProcNumUpdates; /* number of updates per processor */
 
-  static long llpSync[_SHMEM_BCAST_SYNC_SIZE];
+  static long llpSync[_SHMEM_REDUCE_SYNC_SIZE];
   static long long int llpWrk[_SHMEM_REDUCE_SYNC_SIZE];
 
-  static long ipSync[_SHMEM_BCAST_SYNC_SIZE];
+  static long ipSync[_SHMEM_REDUCE_SYNC_SIZE];
   static int ipWrk[_SHMEM_REDUCE_SYNC_SIZE];
+
+  static long bSync[_SHMEM_BCAST_SYNC_SIZE];
 
   FILE *outFile = NULL;
   double *GUPs;
   double *temp_GUPs;
 
 
-  for (i = 0; i < _SHMEM_BCAST_SYNC_SIZE; i += 1){
+  for (i = 0; i < _SHMEM_REDUCE_SYNC_SIZE; i += 1){
         ipSync[i] = _SHMEM_SYNC_VALUE;
         llpSync[i] = _SHMEM_SYNC_VALUE;
   }
+  for (i = 0; i < _SHMEM_BCAST_SYNC_SIZE; i += 1)
+	bSync[i] = _SHMEM_SYNC_VALUE;
 
 
   SHMEMGUPs = -1;
@@ -317,12 +318,13 @@ SHMEMRandomAccess(void)
 
   if (MyProc == 0) {
     fprintf( outFile, "Running on %d processors\n", NumProcs);
-    fprintf( outFile, "Total Main table size = 2^" FSTR64 " = " FSTR64 " words\n",
+    fprintf( outFile, "Total Main table size = 2^%lu = %lu words\n",
              logTableSize, TableSize );
-    fprintf( outFile, "PE Main table size = (2^" FSTR64 ")/%d  = " FSTR64 " words/PE MAX\n",
+    fprintf( outFile, "PE Main table size = (2^%lu)/%d  = %lu  words/PE MAX\n",
              logTableSize, NumProcs, LocalTableSize);
 
-    fprintf( outFile, "Default number of updates (RECOMMENDED) = " FSTR64 "\n", NumUpdates_Default);
+    fprintf( outFile, "Default number of updates (RECOMMENDED) = %lu \n",
+	     NumUpdates_Default);
   }
 
   /* Initialize main table */
@@ -360,7 +362,7 @@ SHMEMRandomAccess(void)
   /* distribute result to all nodes */
   temp_GUPs = GUPs;
   shmem_barrier_all();
-  shmem_broadcast64(GUPs,temp_GUPs,1,0,0,0,NumProcs,llpSync);
+  shmem_broadcast64(GUPs,temp_GUPs,1,0,0,0,NumProcs,bSync);
   shmem_barrier_all();
 
   /* Verification phase */
@@ -378,14 +380,16 @@ SHMEMRandomAccess(void)
               1);
 
   NumErrors = 0;
-  for (i=0; i<LocalTableSize; i++){
+  for (i=0; i<LocalTableSize; i++) {
     if (HPCC_Table[i] != i + GlobalStartMyProc)
       NumErrors++;
   }
 
-  shmem_barrier_all(); 
-  shmem_longlong_sum_to_all( &GlbNumErrors,  &NumErrors, 1, 0,0, NumProcs,llpWrk, llpSync);
-  shmem_barrier_all(); 
+  shmem_barrier_all();
+  shmem_longlong_sum_to_all( (long long *)&GlbNumErrors,
+			     (const long long *)&NumErrors,
+			     1, 0,0, NumProcs,llpWrk, llpSync);
+  shmem_barrier_all();
 
   /* End timed section */
 
@@ -393,7 +397,7 @@ SHMEMRandomAccess(void)
 
   if(MyProc == 0){
     fprintf( outFile, "Verification:  Real time used = %.6f seconds\n", RealTime);
-    fprintf( outFile, "Found " FSTR64 " errors in " FSTR64 " locations (%s).\n",
+    fprintf( outFile, "Found %lu errors in %lu locations (%s).\n",
              GlbNumErrors, TableSize, (GlbNumErrors <= 0.01*TableSize) ?
              "passed" : "failed");
     if (GlbNumErrors > 0.01*TableSize) Failure = 1;
@@ -402,7 +406,8 @@ SHMEMRandomAccess(void)
 
   shmem_free( HPCC_Table );
   shmem_free( HPCC_PELock );
-  failed_table:
+
+failed_table:
 
   if (0 == MyProc) if (outFile != stderr) fclose( outFile );
 
